@@ -2,7 +2,7 @@
 This repo hosts the CNI plugins specific to DC/OS. A brief description
 of each of the plugins is given below:
 
-* [l4lb](l4lb/README.md): A CNI plugin which allows containers in isolated virtual networks to use services provided by [Minuteman](https://github.com/dcos/minuteman) and [Spartan](https://github.com/dcos/spartan).
+* [plugins/l4lb](plugins/l4lb/README.md): A CNI plugin which allows containers in isolated virtual networks to use services provided by [Minuteman](https://github.com/dcos/minuteman) and [Spartan](https://github.com/dcos/spartan).
 
 # Pre-requisites
 * GoLang 1.6+
