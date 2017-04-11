@@ -23,15 +23,15 @@ type Network struct {
 // configuration.
 var IPs = []net.IPNet{
 	net.IPNet{
-		IP:   net.IPv4(198, 50, 100, 1),
+		IP:   net.IPv4(198, 51, 100, 1),
 		Mask: net.IPv4Mask(0xff, 0xff, 0xff, 0xff),
 	},
 	net.IPNet{
-		IP:   net.IPv4(198, 50, 100, 2),
+		IP:   net.IPv4(198, 51, 100, 2),
 		Mask: net.IPv4Mask(0xff, 0xff, 0xff, 0xff),
 	},
 	net.IPNet{
-		IP:   net.IPv4(198, 50, 100, 3),
+		IP:   net.IPv4(198, 51, 100, 3),
 		Mask: net.IPv4Mask(0xff, 0xff, 0xff, 0xff),
 	},
 }
@@ -43,10 +43,10 @@ var Config = Network{
 	Interface: "spartan0",
 	IPAM: IPAM{
 		Type:       "host-local",
-		RangeStart: net.IPv4(198, 50, 100, 10),
-		RangeEnd:   net.IPv4(198, 50, 100, 253),
+		RangeStart: net.IPv4(198, 51, 100, 10),
+		RangeEnd:   net.IPv4(198, 51, 100, 253),
 		Subnet: types.IPNet{
-			IP:   net.IPv4(198, 50, 100, 0),
+			IP:   net.IPv4(198, 51, 100, 0),
 			Mask: net.IPv4Mask(0xff, 0xff, 0xff, 0),
 		},
 	},

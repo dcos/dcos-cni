@@ -22,7 +22,7 @@ import (
 	"os"
 	"runtime"
 
-	"github.com/asridharan/dcos-cni-plugins/pkg/spartan"
+	"github.com/dcos/dcos-cni-plugins/pkg/spartan"
 
 	"github.com/vishvananda/netlink"
 
@@ -50,7 +50,27 @@ func init() {
 	runtime.LockOSThread()
 }
 
-func setupContainerVeth(netns, ifName string, mtu int, pr *current.Result, spartanIPs []net.IPNet) (string, error) {
+func setupDelegateConf(conf *NetConf) (delegateConf []byte, delegatePlugin string, err error) {
+	conf.Delegate["name"] = conf.Name
+	conf.Delegate["cniVersion"] = conf.CNIVersion
+	conf.Delegate["args"] = conf.Args
+
+	delegateConf, err = json.Marshal(conf.Delegate)
+	if err != nil {
+		err = fmt.Errorf("failed to marshall the delegate configuration: %s", err)
+		return
+	}
+
+	delegatePlugin, ok := conf.Delegate["type"].(string)
+	if !ok {
+		err = fmt.Errorf("delegate plugin not defined in network: %s", conf.Delegate["name"])
+		return
+	}
+
+	return
+}
+
+func setupContainerVeth(netns, ifName string, mtu int, pr current.Result, spartanIPs []net.IPNet) (string, error) {
 	// The IPAM result will be something like IP=192.168.3.5/24,
 	// GW=192.168.3.1. What we want is really a point-to-point link but
 	// veth does not support IFF_POINTOPONT. So we set the veth
@@ -70,31 +90,21 @@ func setupContainerVeth(netns, ifName string, mtu int, pr *current.Result, spart
 
 		containerVeth, err := netlink.LinkByName(ifName)
 		if err != nil {
-			return fmt.Errorf("failed to lookup container VETH %q: %v", ifName, err)
+			return fmt.Errorf("failed to lookup container VETH %q: %s", ifName, err)
 		}
 
 		// Configure the container veth with IP address returned by the
-		// IPAM, but set the netmask to a /32. We are adding this closure
-		// since we need modify the `types.Result` passed into this
-		// method.
-		err = func(res current.Result) error {
-			if err := netlink.LinkSetUp(containerVeth); err != nil {
-				return fmt.Errorf("failed to set %q UP: %v", ifName, err)
-			}
+		// IPAM, but set the netmask to a /32.
+		if err := netlink.LinkSetUp(containerVeth); err != nil {
+			return fmt.Errorf("failed to set %q UP: %s", ifName, err)
+		}
 
-			// Set the netmask to a /32.
-			res.IPs[0].Address.Mask = net.IPv4Mask(0xff, 0xff, 0xff, 0xff)
+		// Set the netmask to a /32.
+		pr.IPs[0].Address.Mask = net.IPv4Mask(0xff, 0xff, 0xff, 0xff)
 
-			addr := &netlink.Addr{IPNet: &res.IPs[0].Address, Label: ""}
-			if err = netlink.AddrAdd(containerVeth, addr); err != nil {
-				return fmt.Errorf("failed to add IP address to %q: %v", ifName, err)
-			}
-
-			return nil
-		}(*pr)
-
-		if err != nil {
-			return err
+		addr := &netlink.Addr{IPNet: &pr.IPs[0].Address, Label: ""}
+		if err = netlink.AddrAdd(containerVeth, addr); err != nil {
+			return fmt.Errorf("failed to add IP address to %q: %s", ifName, err)
 		}
 
 		// Add routes to the spartan interfaces through this interface.
@@ -107,7 +117,7 @@ func setupContainerVeth(netns, ifName string, mtu int, pr *current.Result, spart
 			}
 
 			if err = netlink.RouteAdd(&spartanRoute); err != nil {
-				return fmt.Errorf("failed to add spartan route %v: %v", spartanRoute, err)
+				return fmt.Errorf("failed to add spartan route %s: %s", spartanRoute, err)
 			}
 		}
 
@@ -120,40 +130,30 @@ func setupContainerVeth(netns, ifName string, mtu int, pr *current.Result, spart
 }
 
 func cmdAdd(args *skel.CmdArgs) error {
-	conf := NetConf{}
-	if err := json.Unmarshal(args.StdinData, &conf); err != nil {
-		return fmt.Errorf("failed to load netconf: %v", err)
+	conf := &NetConf{}
+	if err := json.Unmarshal(args.StdinData, conf); err != nil {
+		return fmt.Errorf("failed to load netconf: %s", err)
 	}
 
 	if err := ip.EnableIP4Forward(); err != nil {
-		return fmt.Errorf("failed to enable forwarding: %v", err)
+		return fmt.Errorf("failed to enable forwarding: %s", err)
 	}
 
-	// Invoke the delegate plugin.
-	conf.Delegate["name"] = conf.Name
-	conf.Delegate["cniVersion"] = conf.CNIVersion
-	conf.Delegate["args"] = conf.Args
-
-	delegateConf, err := json.Marshal(conf.Delegate)
+	delegateConf, delegatePlugin, err := setupDelegateConf(conf)
 	if err != nil {
-		return fmt.Errorf("failed to marshall the delegate configuration: %v", err)
-	}
-
-	delegatePlugin, ok := conf.Delegate["type"].(string)
-	if !ok {
-		return fmt.Errorf("delegate plugin not defined in network: %s", conf.Delegate["name"])
+		return fmt.Errorf("failed to retrieve delegate configuration: %s", err)
 	}
 
 	delegateResult, err := invoke.DelegateAdd(delegatePlugin, delegateConf)
 	if err != nil {
-		return fmt.Errorf("failed to invoke delegate plugin %s: %v", delegatePlugin, err)
+		return fmt.Errorf("failed to invoke delegate plugin %s: %s", delegatePlugin, err)
 	}
 
 	// Delegate plugin seems to be successful, install the spartan
 	// network.
 	spartanNetConf, err := json.Marshal(spartan.Config)
 	if err != nil {
-		return fmt.Errorf("failed to marshall the `spartan-network` IPAM configuration: %v", err)
+		return fmt.Errorf("failed to marshall the `spartan-network` IPAM configuration: %s", err)
 	}
 
 	// Run the IPAM plugin for the spartan network.
@@ -172,18 +172,21 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 
 	// Make sure we got only one IP and that it is IPv4
-	if (len(result.IPs) > 1) || result.IPs[0].Address.IP.To4() == nil {
+	switch {
+	case len(result.IPs) > 1:
 		return errors.New("Expecting a single IPv4 address from IPAM")
+	case result.IPs[0].Address.IP.To4() == nil:
+		return errors.New("Expecting a IPv4 address from IPAM")
 	}
 
-	hostVethName, err := setupContainerVeth(args.Netns, spartan.Config.Interface, conf.MTU, result, spartan.IPs)
+	hostVethName, err := setupContainerVeth(args.Netns, spartan.Config.Interface, conf.MTU, *result, spartan.IPs)
 	if err != nil {
 		return err
 	}
 
 	hostVeth, err := netlink.LinkByName(hostVethName)
 	if err != nil {
-		return fmt.Errorf("failed to lookup host VETH %q: %v", hostVethName, err)
+		return fmt.Errorf("failed to lookup host VETH %s: %s", hostVethName, err)
 	}
 
 	containerRoute := netlink.Route{
@@ -196,7 +199,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 
 	if err = netlink.RouteAdd(&containerRoute); err != nil {
-		return fmt.Errorf("failed to add spartan route %v: %v", containerRoute, err)
+		return fmt.Errorf("failed to add spartan route %s: %s", containerRoute, err)
 	}
 
 	//TODO(asridharan): We probably need to update the DNS result to
@@ -210,14 +213,14 @@ func cmdAdd(args *skel.CmdArgs) error {
 }
 
 func cmdDel(args *skel.CmdArgs) error {
-	conf := NetConf{}
-	if err := json.Unmarshal(args.StdinData, &conf); err != nil {
-		return fmt.Errorf("failed to load netconf: %v", err)
+	conf := &NetConf{}
+	if err := json.Unmarshal(args.StdinData, conf); err != nil {
+		return fmt.Errorf("failed to load netconf: %s", err)
 	}
 
 	spartanNetConf, err := json.Marshal(spartan.Config)
 	if err != nil {
-		return fmt.Errorf("failed to marshall the `spartan-network` IPAM configuration: %v", err)
+		return fmt.Errorf("failed to marshall the `spartan-network` IPAM configuration: %s", err)
 	}
 
 	if err = ipam.ExecDel(spartan.Config.IPAM.Type, spartanNetConf); err != nil {
@@ -236,12 +239,10 @@ func cmdDel(args *skel.CmdArgs) error {
 	// namespace. We also don't want any interfaces to be
 	// present when the delegate plugin is invoked, since the presence
 	// of these routes might confuse the delegate plugin.
-	var ipn *net.IPNet
 	err = ns.WithNetNSPath(args.Netns, func(_ ns.NetNS) error {
 		// We just need to delete the interface, the associated routes
 		// will get deleted by themselves.
-		var err error
-		ipn, err = ip.DelLinkByNameAddr(spartan.Config.Interface, netlink.FAMILY_V4)
+		_, err := ip.DelLinkByNameAddr(spartan.Config.Interface, netlink.FAMILY_V4)
 		if err != nil {
 			return err
 		}
@@ -250,27 +251,18 @@ func cmdDel(args *skel.CmdArgs) error {
 	})
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to delete spartan interface in container: %v", err)
+		fmt.Fprintf(os.Stderr, "failed to delete spartan interface in container: %s", err)
 	}
 
 	// Invoke the delegate plugin.
-	conf.Delegate["name"] = conf.Name
-	conf.Delegate["cniVersion"] = conf.CNIVersion
-	conf.Delegate["args"] = conf.Args
-
-	delegateConf, err := json.Marshal(conf.Delegate)
+	delegateConf, delegatePlugin, err := setupDelegateConf(conf)
 	if err != nil {
-		return fmt.Errorf("failed to marshall the delegate configuration: %v", err)
-	}
-
-	delegatePlugin, ok := conf.Delegate["type"].(string)
-	if !ok {
-		return fmt.Errorf("delegate plugin not defined in network: %s", conf.Delegate["name"])
+		return fmt.Errorf("failed to retrieve delegate configuration: %s", err)
 	}
 
 	err = invoke.DelegateDel(delegatePlugin, delegateConf)
 	if err != nil {
-		return fmt.Errorf("failed to invoke delegate plugin %s: %v", delegatePlugin, err)
+		return fmt.Errorf("failed to invoke delegate plugin %s: %s", delegatePlugin, err)
 	}
 
 	return nil

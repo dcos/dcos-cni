@@ -35,6 +35,7 @@ vendor: glide.yaml
 	glide install -strip-vendor
 
 dcos-l4lb:$(L4LB_SRC)
+	echo "GOPATH:" $(GOPATH)
 	mkdir -p `pwd`/bin
 	go build -v -o `pwd`/bin/$@ $(L4LB)
 
