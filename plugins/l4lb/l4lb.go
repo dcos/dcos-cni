@@ -16,23 +16,15 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
-	"net"
-	"os"
 	"runtime"
 
 	"github.com/dcos/dcos-cni/pkg/spartan"
 
-	"github.com/vishvananda/netlink"
-
 	"github.com/containernetworking/cni/pkg/invoke"
 	"github.com/containernetworking/cni/pkg/ip"
-	"github.com/containernetworking/cni/pkg/ipam"
-	"github.com/containernetworking/cni/pkg/ns"
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/types"
-	"github.com/containernetworking/cni/pkg/types/current"
 	"github.com/containernetworking/cni/pkg/version"
 )
 
@@ -61,72 +53,18 @@ func setupDelegateConf(conf *NetConf) (delegateConf []byte, delegatePlugin strin
 		return
 	}
 
-	delegatePlugin, ok := conf.Delegate["type"].(string)
+	_, ok := conf.Delegate["type"]
 	if !ok {
-		err = fmt.Errorf("delegate plugin not defined in network: %s", conf.Delegate["name"])
+		err = fmt.Errorf("type field missing in delegate network: %s", conf.Delegate["name"])
 		return
 	}
 
+	delegatePlugin, ok = conf.Delegate["type"].(string)
+	if !ok {
+		err = fmt.Errorf("type field in delegate network %s has incorrect type, expected a `string`", conf.Delegate["name"])
+	}
+
 	return
-}
-
-func setupContainerVeth(netns, ifName string, mtu int, pr current.Result, spartanIPs []net.IPNet) (string, error) {
-	// The IPAM result will be something like IP=192.168.3.5/24,
-	// GW=192.168.3.1. What we want is really a point-to-point link but
-	// veth does not support IFF_POINTOPONT. So we set the veth
-	// interface to 192.168.3.5/32. Since the device netmask is set to
-	// /32, this would not add any routes to the main routing table.
-	// Therefore, in order to reach the spartan interfaces, we will have
-	// to explicitly set routes to the spartan interface through this
-	// device.
-
-	var hostVethName string
-
-	err := ns.WithNetNSPath(netns, func(hostNS ns.NetNS) error {
-		hostVeth, _, err := ip.SetupVeth(ifName, mtu, hostNS)
-		if err != nil {
-			return err
-		}
-
-		containerVeth, err := netlink.LinkByName(ifName)
-		if err != nil {
-			return fmt.Errorf("failed to lookup container VETH %q: %s", ifName, err)
-		}
-
-		// Configure the container veth with IP address returned by the
-		// IPAM, but set the netmask to a /32.
-		if err := netlink.LinkSetUp(containerVeth); err != nil {
-			return fmt.Errorf("failed to set %q UP: %s", ifName, err)
-		}
-
-		// Set the netmask to a /32.
-		pr.IPs[0].Address.Mask = net.IPv4Mask(0xff, 0xff, 0xff, 0xff)
-
-		addr := &netlink.Addr{IPNet: &pr.IPs[0].Address, Label: ""}
-		if err = netlink.AddrAdd(containerVeth, addr); err != nil {
-			return fmt.Errorf("failed to add IP address to %q: %s", ifName, err)
-		}
-
-		// Add routes to the spartan interfaces through this interface.
-		for _, spartanIP := range spartanIPs {
-			spartanRoute := netlink.Route{
-				LinkIndex: containerVeth.Attrs().Index,
-				Dst:       &spartanIP,
-				Scope:     netlink.SCOPE_LINK,
-				Src:       pr.IPs[0].Address.IP,
-			}
-
-			if err = netlink.RouteAdd(&spartanRoute); err != nil {
-				return fmt.Errorf("failed to add spartan route %s: %s", spartanRoute, err)
-			}
-		}
-
-		hostVethName = hostVeth.Name
-
-		return nil
-	})
-
-	return hostVethName, err
 }
 
 func cmdAdd(args *skel.CmdArgs) error {
@@ -151,55 +89,10 @@ func cmdAdd(args *skel.CmdArgs) error {
 
 	// Delegate plugin seems to be successful, install the spartan
 	// network.
-	spartanNetConf, err := json.Marshal(spartan.Config)
+
+	err = spartan.CniAdd(args)
 	if err != nil {
-		return fmt.Errorf("failed to marshall the `spartan-network` IPAM configuration: %s", err)
-	}
-
-	// Run the IPAM plugin for the spartan network.
-	ipamResult, err := ipam.ExecAdd(spartan.Config.IPAM.Type, spartanNetConf)
-	if err != nil {
-		return err
-	}
-
-	result, err := current.NewResultFromResult(ipamResult)
-	if err != nil {
-		return err
-	}
-
-	if result.IPs == nil {
-		return errors.New("IPAM plugin returned missing IPv4 config")
-	}
-
-	// Make sure we got only one IP and that it is IPv4
-	switch {
-	case len(result.IPs) > 1:
-		return errors.New("Expecting a single IPv4 address from IPAM")
-	case result.IPs[0].Address.IP.To4() == nil:
-		return errors.New("Expecting a IPv4 address from IPAM")
-	}
-
-	hostVethName, err := setupContainerVeth(args.Netns, spartan.Config.Interface, conf.MTU, *result, spartan.IPs)
-	if err != nil {
-		return err
-	}
-
-	hostVeth, err := netlink.LinkByName(hostVethName)
-	if err != nil {
-		return fmt.Errorf("failed to lookup host VETH %s: %s", hostVethName, err)
-	}
-
-	containerRoute := netlink.Route{
-		LinkIndex: hostVeth.Attrs().Index,
-		Dst: &net.IPNet{
-			IP:   result.IPs[0].Address.IP,
-			Mask: net.IPv4Mask(0xff, 0xff, 0xff, 0xff),
-		},
-		Scope: netlink.SCOPE_LINK,
-	}
-
-	if err = netlink.RouteAdd(&containerRoute); err != nil {
-		return fmt.Errorf("failed to add spartan route %s: %s", containerRoute, err)
+		return fmt.Errorf("failed to invoke the spartan plugin: %s", err)
 	}
 
 	//TODO(asridharan): We probably need to update the DNS result to
@@ -218,40 +111,9 @@ func cmdDel(args *skel.CmdArgs) error {
 		return fmt.Errorf("failed to load netconf: %s", err)
 	}
 
-	spartanNetConf, err := json.Marshal(spartan.Config)
+	err := spartan.CniDel(args)
 	if err != nil {
-		return fmt.Errorf("failed to marshall the `spartan-network` IPAM configuration: %s", err)
-	}
-
-	if err = ipam.ExecDel(spartan.Config.IPAM.Type, spartanNetConf); err != nil {
-		return err
-	}
-
-	if args.Netns == "" {
-		return nil
-	}
-
-	// Ideally, the kernel would clean up the veth and routes within the
-	// network namespace when the namespace is destroyed. We are still
-	// explicitly deleting the interface here since we want the IP
-	// address associated with the interface. We will then use the IP
-	// address to clean up any associated routes in the host network
-	// namespace. We also don't want any interfaces to be
-	// present when the delegate plugin is invoked, since the presence
-	// of these routes might confuse the delegate plugin.
-	err = ns.WithNetNSPath(args.Netns, func(_ ns.NetNS) error {
-		// We just need to delete the interface, the associated routes
-		// will get deleted by themselves.
-		_, err := ip.DelLinkByNameAddr(spartan.Config.Interface, netlink.FAMILY_V4)
-		if err != nil {
-			return err
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to delete spartan interface in container: %s", err)
+		return fmt.Errorf("failed to invoke the spartan plugin with CNI_DEL")
 	}
 
 	// Invoke the delegate plugin.
