@@ -19,6 +19,8 @@ type Network struct {
 	IPAM      IPAM   `json:"ipam"`
 }
 
+const IfName string = "spartan0"
+
 // TODO(asridharan): This needs to be derived from the spartan
 // configuration.
 var IPs = []net.IPNet{
