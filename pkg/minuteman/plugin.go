@@ -15,23 +15,19 @@ func CniAdd(args *skel.CmdArgs) error {
 		return fmt.Errorf("failed to load minuteman netconf: %s", err)
 	}
 
-	if conf.Minuteman == nil {
-		return fmt.Errorf("missing field minuteman")
-	}
-
-	if conf.Minuteman.Path == "" {
+	if conf.Path == "" {
 		return fmt.Errorf("missing path for minuteman state")
 	}
 
 	// Create the directory where minuteman will search for the
 	// registered containers.
-	if err := os.MkdirAll(conf.Minuteman.Path, 0644); err != nil {
+	if err := os.MkdirAll(conf.Path, 0644); err != nil {
 		return fmt.Errorf("couldn't create directory for storing minuteman container registration information:%s", err)
 	}
 
 	// Create a file with name `ContainerID` and write the network
 	// namespace into this file.
-	if err := ioutil.WriteFile(conf.Minuteman.Path+"/"+args.ContainerID, []byte(args.Netns), 0644); err != nil {
+	if err := ioutil.WriteFile(conf.Path+"/"+args.ContainerID, []byte(args.Netns), 0644); err != nil {
 		return fmt.Errorf("couldn't checkout point the network namespace for containerID:%s for minuteman", args.ContainerID)
 	}
 
@@ -46,16 +42,12 @@ func CniDel(args *skel.CmdArgs) error {
 
 	// For failures just log to `stderr` instead of  failing with an
 	// error.
-	if conf.Minuteman == nil {
-		fmt.Fprintf(os.Stderr, "missing field minuteman")
-	}
-
-	if conf.Minuteman.Path == "" {
+	if conf.Path == "" {
 		fmt.Fprintf(os.Stderr, "missing path for minuteman state")
 	}
 
 	// Remove the container registration.
-	if err := os.Remove(conf.Minuteman.Path + "/" + args.ContainerID); err != nil {
+	if err := os.Remove(conf.Path + "/" + args.ContainerID); err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to remove registration for contianerID:%s from minuteman", args.ContainerID)
 	}
 

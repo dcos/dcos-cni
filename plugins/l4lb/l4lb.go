@@ -31,17 +31,13 @@ import (
 
 // We need this struct for de-duplicating the embedding of
 // `types.NetConf` and `minuteman.NetConf` in `NetConf`.
-type MinutemanConf struct {
-	minuteman.NetConf
-}
-
 type NetConf struct {
 	types.NetConf
-	MinutemanConf
-	Spartan  bool                   `json:"spartan, omitempty"`
-	Args     map[string]interface{} `json:"args, omitempty"`
-	MTU      int                    `json:"mtu, omitempty"`
-	Delegate map[string]interface{} `json:"delegate, omitempty"`
+	Minuteman *minuteman.NetConf     `json:"minuteman, omitempty"`
+	Spartan   bool                   `json:"spartan, omitempty"`
+	Args      map[string]interface{} `json:"args, omitempty"`
+	MTU       int                    `json:"mtu, omitempty"`
+	Delegate  map[string]interface{} `json:"delegate, omitempty"`
 }
 
 func init() {
