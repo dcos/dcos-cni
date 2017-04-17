@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"runtime"
 
+	"github.com/dcos/dcos-cni/pkg/minuteman"
 	"github.com/dcos/dcos-cni/pkg/spartan"
 
 	"github.com/containernetworking/cni/pkg/invoke"
@@ -28,11 +29,19 @@ import (
 	"github.com/containernetworking/cni/pkg/version"
 )
 
+// We need this struct for de-duplicating the embedding of
+// `types.NetConf` and `minuteman.NetConf` in `NetConf`.
+type MinutemanConf struct {
+	minuteman.NetConf
+}
+
 type NetConf struct {
 	types.NetConf
-	Args     map[string]interface{} `json:"args"`
-	MTU      int                    `json:"mtu"`
-	Delegate map[string]interface{} `json:"delegate"`
+	MinutemanConf
+	Spartan  bool                   `json:"spartan, omitempty"`
+	Args     map[string]interface{} `json:"args, omitempty"`
+	MTU      int                    `json:"mtu, omitempty"`
+	Delegate map[string]interface{} `json:"delegate, omitempty"`
 }
 
 func init() {
@@ -87,18 +96,40 @@ func cmdAdd(args *skel.CmdArgs) error {
 		return fmt.Errorf("failed to invoke delegate plugin %s: %s", delegatePlugin, err)
 	}
 
-	// Delegate plugin seems to be successful, install the spartan
-	// network.
+	switch {
+	// Check if minuteman needs to be enabled for this container.
+	case conf.Minuteman != nil:
+		{
+			minutemanArgs := *args
+			minutemanArgs.StdinData, err = json.Marshal(conf.Minuteman)
+			if err != nil {
+				return fmt.Errorf("failed to marshal the minuteman configuration into STDIN for the minuteman plugin")
+			}
 
-	err = spartan.CniAdd(args)
-	if err != nil {
-		return fmt.Errorf("failed to invoke the spartan plugin: %s", err)
+			err = minuteman.CniAdd(&minutemanArgs)
+			if err != nil {
+				return fmt.Errorf("Unable to register container:%s with minuteman", args.ContainerID)
+			}
+		}
+
+	case conf.Spartan:
+		{
+			// Delegate plugin seems to be successful, install the spartan
+			// network.
+			err = spartan.CniAdd(args)
+			if err != nil {
+				return fmt.Errorf("failed to invoke the spartan plugin: %s", err)
+			}
+
+			//TODO(asridharan): We probably need to update the DNS result to
+			//make sure that we override the DNS resolution with the spartan
+			//network, since the operator has explicitly requested to use the
+			//spartan network.
+		}
+
+	default:
+		return fmt.Errorf("at least one of minuteman or spartan CNI options need to be enabled for this plutin")
 	}
-
-	//TODO(asridharan): We probably need to update the DNS result to
-	//make sure that we override the DNS resolution with the spartan
-	//network, since the operator has explicitly requested to use the
-	//spartan network.
 
 	// We always return the result from the delegate plugin and not from
 	// this plugin.
@@ -111,9 +142,33 @@ func cmdDel(args *skel.CmdArgs) error {
 		return fmt.Errorf("failed to load netconf: %s", err)
 	}
 
-	err := spartan.CniDel(args)
-	if err != nil {
-		return fmt.Errorf("failed to invoke the spartan plugin with CNI_DEL")
+	switch {
+	case conf.Spartan:
+		{
+			err := spartan.CniDel(args)
+			if err != nil {
+				return fmt.Errorf("failed to invoke the spartan plugin with CNI_DEL")
+			}
+		}
+
+	case conf.Minuteman != nil:
+		{
+			var err error
+			minutemanArgs := *args
+			// Check if minuteman entries need to be removed from this container.
+			minutemanArgs.StdinData, err = json.Marshal(conf.Minuteman)
+			if err != nil {
+				return fmt.Errorf("failed to marshal the minuteman configuration into STDIN for the minuteman plugin")
+			}
+
+			err = minuteman.CniDel(&minutemanArgs)
+			if err != nil {
+				return fmt.Errorf("Unable to register container:%s with minuteman", args.ContainerID)
+			}
+		}
+
+	default:
+		return fmt.Errorf("one of minuteman or spartan need to be enabled for this plugin")
 	}
 
 	// Invoke the delegate plugin.
