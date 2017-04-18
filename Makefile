@@ -10,11 +10,17 @@ export GOOS?=linux
 # the hierarchical structure of an existing $GOPATH directory.
 export GOPATH=$(shell pwd)/gopath
 
+ifeq ($(VERBOSE),1)
+	TEST_VERBOSE=-ginkgo.v
+endif
+
 #dcos-l4lb
 L4LB=github.com/dcos/dcos-cni/plugins/l4lb
 L4LB_SRC=$(wildcard plugins/l4lb/*.go) $(wildcard pkg/spartan/*.go)
+L4LB_TEST_SRC=$(wildcard plugins/l4lbl/*_tests.go)
 
 PLUGINS=dcos-l4lb
+TESTS=dcos-l4lb-test
 
 .PHONY: all plugin
 default: all
@@ -40,6 +46,12 @@ dcos-l4lb:$(L4LB_SRC)
 	go build -v -o `pwd`/bin/$@ $(L4LB)
 
 plugin: gopath vendor $(PLUGINS)
+
+dcos-l4lb-test:$(L4LB_TEST_SRC)
+	echo "GOPATH:" $(GOPATH)
+	go test $(L4LB) $(TEST_VERBOSE)
+
+tests: $(TESTS)
 
 all: plugin
 
