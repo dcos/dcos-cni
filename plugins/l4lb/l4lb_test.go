@@ -1,7 +1,9 @@
 package main
 
 import (
+	"io/ioutil"
 	"net"
+	"os"
 
 	"github.com/containernetworking/cni/pkg/ip"
 	"github.com/containernetworking/cni/pkg/ns"
@@ -17,7 +19,7 @@ import (
 
 var _ = Describe("L4lb", func() {
 	var originalNS ns.NetNS
-	var spartanIfName = "spartan"
+	const spartanIfName = "spartan"
 
 	BeforeEach(func() {
 		// Create a new NetNS so we don't modify the host
@@ -60,13 +62,19 @@ var _ = Describe("L4lb", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
+	// Spartan tests.
 	It("configures and deconfigures a spartan on a bridge network with ADD/DEL", func() {
 		const IFNAME = "eth0"
 
+		By("Adding a CNI configuration enabling spartan network")
 		conf := `{
     	"cniVersion": "0.2.0",
     	"name": "spartan-net",
     	"type": "dcos-l4lb",
+			"spartan": true,
+			"minuteman": {
+				"path": "/tmp/minuteman_cni_test"
+			},
 			"delegate" : {
 				"type" : "bridge",
 				"bridge": "mesos-cni0",
@@ -82,23 +90,24 @@ var _ = Describe("L4lb", func() {
 			}
 		}`
 
-		targetNs, err := ns.NewNS()
+		targetNS, err := ns.NewNS()
 		Expect(err).NotTo(HaveOccurred())
-		defer targetNs.Close()
+		defer targetNS.Close()
 
 		args := &skel.CmdArgs{
 			ContainerID: "dummy",
-			Netns:       targetNs.Path(),
+			Netns:       targetNS.Path(),
 			IfName:      IFNAME,
 			StdinData:   []byte(conf),
 		}
 
 		// Execute the plugin with the ADD command, creating the veth
 		// endpoints.
+		By("Invoking ADD to attach container to spartan network")
 		err = originalNS.Do(func(ns.NetNS) error {
 			defer GinkgoRecover()
 
-			_, _, err := testutils.CmdAddWithResult(targetNs.Path(), IFNAME, []byte(conf), func() error {
+			_, _, err := testutils.CmdAddWithResult(targetNS.Path(), IFNAME, []byte(conf), func() error {
 				return cmdAdd(args)
 			})
 			Expect(err).NotTo(HaveOccurred())
@@ -106,6 +115,7 @@ var _ = Describe("L4lb", func() {
 		})
 		Expect(err).NotTo(HaveOccurred())
 
+		By("Checking if container has the spartan interfaces configured")
 		err = targetNS.Do(func(ns.NetNS) error {
 			defer GinkgoRecover()
 
@@ -118,12 +128,19 @@ var _ = Describe("L4lb", func() {
 			return nil
 		})
 
+		By("Checking if plugin has registered network namespace with minuteman")
+		netns, err := ioutil.ReadFile("/tmp/minuteman_cni_test/dummy")
+		Expect(err).NotTo(HaveOccurred())
+
+		Ω(string(netns)).Should(Equal(targetNS.Path()))
+
 		// Call the plugins with the DEL command, deleting the veth
 		// endpoints.
+		By("Invoking DEL to detach container from the spartan network")
 		err = originalNS.Do(func(ns.NetNS) error {
 			defer GinkgoRecover()
 
-			err := testutils.CmdDelWithResult(targetNs.Path(), IFNAME, func() error {
+			err := testutils.CmdDelWithResult(targetNS.Path(), IFNAME, func() error {
 				return cmdDel(args)
 			})
 			Expect(err).NotTo(HaveOccurred())
@@ -132,7 +149,8 @@ var _ = Describe("L4lb", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		// Make sure spartan link has been deleted
-		err = targetNs.Do(func(ns.NetNS) error {
+		By("Checking that the spartan interface has been removed from the container netns")
+		err = targetNS.Do(func(ns.NetNS) error {
 			defer GinkgoRecover()
 
 			link, err := netlink.LinkByName(spartan.IfName)
@@ -141,6 +159,9 @@ var _ = Describe("L4lb", func() {
 			return nil
 		})
 		Expect(err).NotTo(HaveOccurred())
-	})
 
+		By("Checking that the network namespace has been de-registered from minuteman")
+		_, err = os.Stat("/tmp/minuteman_cni_test/dummy")
+		Ω(os.IsNotExist(err)).Should(BeTrue())
+	})
 })
