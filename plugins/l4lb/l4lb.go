@@ -92,39 +92,35 @@ func cmdAdd(args *skel.CmdArgs) error {
 		return fmt.Errorf("failed to invoke delegate plugin %s: %s", delegatePlugin, err)
 	}
 
-	switch {
-	// Check if minuteman needs to be enabled for this container.
-	case conf.Minuteman != nil:
-		{
-			minutemanArgs := *args
-			minutemanArgs.StdinData, err = json.Marshal(conf.Minuteman)
-			if err != nil {
-				return fmt.Errorf("failed to marshal the minuteman configuration into STDIN for the minuteman plugin")
-			}
-
-			err = minuteman.CniAdd(&minutemanArgs)
-			if err != nil {
-				return fmt.Errorf("Unable to register container:%s with minuteman", args.ContainerID)
-			}
-		}
-
-	case conf.Spartan:
-		{
-			// Delegate plugin seems to be successful, install the spartan
-			// network.
-			err = spartan.CniAdd(args)
-			if err != nil {
-				return fmt.Errorf("failed to invoke the spartan plugin: %s", err)
-			}
-
-			//TODO(asridharan): We probably need to update the DNS result to
-			//make sure that we override the DNS resolution with the spartan
-			//network, since the operator has explicitly requested to use the
-			//spartan network.
-		}
-
-	default:
+	if !conf.Spartan && conf.Minuteman == nil {
 		return fmt.Errorf("at least one of minuteman or spartan CNI options need to be enabled for this plutin")
+	}
+
+	if conf.Spartan {
+		// Install the spartan network.
+		err = spartan.CniAdd(args)
+		if err != nil {
+			return fmt.Errorf("failed to invoke the spartan plugin: %s", err)
+		}
+
+		//TODO(asridharan): We probably need to update the DNS result to
+		//make sure that we override the DNS resolution with the spartan
+		//network, since the operator has explicitly requested to use the
+		//spartan network.
+	}
+
+	// Check if minuteman needs to be enabled for this container.
+	if conf.Minuteman != nil {
+		minutemanArgs := *args
+		minutemanArgs.StdinData, err = json.Marshal(conf.Minuteman)
+		if err != nil {
+			return fmt.Errorf("failed to marshal the minuteman configuration into STDIN for the minuteman plugin")
+		}
+
+		err = minuteman.CniAdd(&minutemanArgs)
+		if err != nil {
+			return fmt.Errorf("Unable to register container:%s with minuteman", args.ContainerID)
+		}
 	}
 
 	// We always return the result from the delegate plugin and not from
@@ -138,33 +134,30 @@ func cmdDel(args *skel.CmdArgs) error {
 		return fmt.Errorf("failed to load netconf: %s", err)
 	}
 
-	switch {
-	case conf.Spartan:
-		{
-			err := spartan.CniDel(args)
-			if err != nil {
-				return fmt.Errorf("failed to invoke the spartan plugin with CNI_DEL")
-			}
-		}
-
-	case conf.Minuteman != nil:
-		{
-			var err error
-			minutemanArgs := *args
-			// Check if minuteman entries need to be removed from this container.
-			minutemanArgs.StdinData, err = json.Marshal(conf.Minuteman)
-			if err != nil {
-				return fmt.Errorf("failed to marshal the minuteman configuration into STDIN for the minuteman plugin")
-			}
-
-			err = minuteman.CniDel(&minutemanArgs)
-			if err != nil {
-				return fmt.Errorf("Unable to register container:%s with minuteman", args.ContainerID)
-			}
-		}
-
-	default:
+	if !conf.Spartan && conf.Minuteman == nil {
 		return fmt.Errorf("one of minuteman or spartan need to be enabled for this plugin")
+	}
+
+	if conf.Spartan {
+		err := spartan.CniDel(args)
+		if err != nil {
+			return fmt.Errorf("failed to invoke the spartan plugin with CNI_DEL")
+		}
+	}
+
+	if conf.Minuteman != nil {
+		var err error
+		minutemanArgs := *args
+		// Check if minuteman entries need to be removed from this container.
+		minutemanArgs.StdinData, err = json.Marshal(conf.Minuteman)
+		if err != nil {
+			return fmt.Errorf("failed to marshal the minuteman configuration into STDIN for the minuteman plugin")
+		}
+
+		err = minuteman.CniDel(&minutemanArgs)
+		if err != nil {
+			return fmt.Errorf("Unable to register container:%s with minuteman", args.ContainerID)
+		}
 	}
 
 	// Invoke the delegate plugin.
