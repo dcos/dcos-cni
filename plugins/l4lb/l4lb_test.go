@@ -9,15 +9,25 @@ import (
 	"github.com/containernetworking/cni/pkg/ns"
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/testutils"
+	"github.com/dcos/dcos-cni/pkg/minuteman"
 	"github.com/dcos/dcos-cni/pkg/spartan"
 
 	"github.com/vishvananda/netlink"
 
 	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 )
 
 var _ = Describe("L4lb", func() {
+	type L4lbCase struct {
+		Conf        string
+		Spartan     bool
+		Minuteman   bool
+		ContainerID string
+		Path        string
+	}
+
 	var originalNS ns.NetNS
 	const spartanIfName = "spartan"
 
@@ -62,106 +72,173 @@ var _ = Describe("L4lb", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
-	// Spartan tests.
-	It("configures and deconfigures a spartan on a bridge network with ADD/DEL", func() {
-		const IFNAME = "eth0"
+	DescribeTable("The spartan minuteman tests",
+		func(input L4lbCase) {
+			const IFNAME = "eth0"
+			conf := input.Conf
 
-		By("Adding a CNI configuration enabling spartan network")
-		conf := `{
-    	"cniVersion": "0.2.0",
-    	"name": "spartan-net",
-    	"type": "dcos-l4lb",
-			"spartan": true,
-			"minuteman": {
-				"path": "/tmp/minuteman_cni_test"
-			},
-			"delegate" : {
-				"type" : "bridge",
-				"bridge": "mesos-cni0",
-    		"ipMasq": true,
-    		"mtu": 5000,
-    		"ipam": {
-        	"type": "host-local",
-        	"subnet": "10.1.2.0/24",
-					"routes": [
-						{ "dst": "0.0.0.0/0" }
-					]
-    		}
+			By("Adding a CNI configuration enabling spartan network")
+
+			targetNS, err := ns.NewNS()
+			Expect(err).NotTo(HaveOccurred())
+			defer targetNS.Close()
+
+			args := &skel.CmdArgs{
+				ContainerID: input.ContainerID,
+				Netns:       targetNS.Path(),
+				IfName:      IFNAME,
+				StdinData:   []byte(conf),
 			}
-		}`
 
-		targetNS, err := ns.NewNS()
-		Expect(err).NotTo(HaveOccurred())
-		defer targetNS.Close()
+			// Execute the plugin with the ADD command, creating the veth
+			// endpoints.
+			By("Invoking ADD to attach container to spartan network")
+			err = originalNS.Do(func(ns.NetNS) error {
+				defer GinkgoRecover()
 
-		args := &skel.CmdArgs{
-			ContainerID: "dummy",
-			Netns:       targetNS.Path(),
-			IfName:      IFNAME,
-			StdinData:   []byte(conf),
-		}
-
-		// Execute the plugin with the ADD command, creating the veth
-		// endpoints.
-		By("Invoking ADD to attach container to spartan network")
-		err = originalNS.Do(func(ns.NetNS) error {
-			defer GinkgoRecover()
-
-			_, _, err := testutils.CmdAddWithResult(targetNS.Path(), IFNAME, []byte(conf), func() error {
-				return cmdAdd(args)
+				_, _, err := testutils.CmdAddWithResult(targetNS.Path(), IFNAME, []byte(conf), func() error {
+					return cmdAdd(args)
+				})
+				Expect(err).NotTo(HaveOccurred())
+				return nil
 			})
 			Expect(err).NotTo(HaveOccurred())
-			return nil
-		})
-		Expect(err).NotTo(HaveOccurred())
 
-		By("Checking if container has the spartan interfaces configured")
-		err = targetNS.Do(func(ns.NetNS) error {
-			defer GinkgoRecover()
+			By("Checking if container has the spartan interfaces configured")
+			err = targetNS.Do(func(ns.NetNS) error {
+				defer GinkgoRecover()
 
-			// Check if the spartan link has been added.
-			link, err := netlink.LinkByName(spartan.IfName)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(link.Attrs().Name).To(Equal(spartan.IfName))
+				// Check if the spartan link has been added.
+				link, err := netlink.LinkByName(spartan.IfName)
+				if input.Spartan {
+					Expect(err).NotTo(HaveOccurred())
+					Expect(link.Attrs().Name).To(Equal(spartan.IfName))
+				} else {
+					Expect(err).To(HaveOccurred())
+				}
 
-			// Run the ping command for each of the spartan IP.
-			return nil
-		})
+				// Run the ping command for each of the spartan IP.
+				return nil
+			})
 
-		By("Checking if plugin has registered network namespace with minuteman")
-		netns, err := ioutil.ReadFile("/tmp/minuteman_cni_test/dummy")
-		Expect(err).NotTo(HaveOccurred())
+			By("Checking if plugin has registered network namespace with minuteman")
+			netns, err := ioutil.ReadFile(input.Path + "/" + input.ContainerID)
+			if input.Minuteman {
+				Expect(err).NotTo(HaveOccurred())
+				Ω(string(netns)).Should(Equal(targetNS.Path()))
+			} else {
+				Expect(err).To(HaveOccurred())
+			}
 
-		Ω(string(netns)).Should(Equal(targetNS.Path()))
+			// Call the plugins with the DEL command, deleting the veth
+			// endpoints.
+			By("Invoking DEL to detach container from the spartan network")
+			err = originalNS.Do(func(ns.NetNS) error {
+				defer GinkgoRecover()
 
-		// Call the plugins with the DEL command, deleting the veth
-		// endpoints.
-		By("Invoking DEL to detach container from the spartan network")
-		err = originalNS.Do(func(ns.NetNS) error {
-			defer GinkgoRecover()
-
-			err := testutils.CmdDelWithResult(targetNS.Path(), IFNAME, func() error {
-				return cmdDel(args)
+				err := testutils.CmdDelWithResult(targetNS.Path(), IFNAME, func() error {
+					return cmdDel(args)
+				})
+				Expect(err).NotTo(HaveOccurred())
+				return nil
 			})
 			Expect(err).NotTo(HaveOccurred())
-			return nil
-		})
-		Expect(err).NotTo(HaveOccurred())
 
-		// Make sure spartan link has been deleted
-		By("Checking that the spartan interface has been removed from the container netns")
-		err = targetNS.Do(func(ns.NetNS) error {
-			defer GinkgoRecover()
+			// Make sure spartan link has been deleted
+			By("Checking that the spartan interface has been removed from the container netns")
+			err = targetNS.Do(func(ns.NetNS) error {
+				defer GinkgoRecover()
 
-			link, err := netlink.LinkByName(spartan.IfName)
-			Expect(err).To(HaveOccurred())
-			Expect(link).To(BeNil())
-			return nil
-		})
-		Expect(err).NotTo(HaveOccurred())
+				link, err := netlink.LinkByName(spartan.IfName)
+				Expect(err).To(HaveOccurred())
+				Expect(link).To(BeNil())
+				return nil
+			})
+			Expect(err).NotTo(HaveOccurred())
 
-		By("Checking that the network namespace has been de-registered from minuteman")
-		_, err = os.Stat("/tmp/minuteman_cni_test/dummy")
-		Ω(os.IsNotExist(err)).Should(BeTrue())
-	})
+			By("Checking that the network namespace has been de-registered from minuteman")
+			_, err = os.Stat(input.Path + "/" + input.ContainerID)
+			Ω(os.IsNotExist(err)).Should(BeTrue())
+		},
+		Entry("Default values",
+			L4lbCase{
+				Conf: `{
+      "cniVersion": "0.2.0",
+      "name": "spartan-net",
+      "type": "dcos-l4lb",
+      "delegate" : {
+        "type" : "bridge",
+        "bridge": "mesos-cni0",
+        "ipMasq": true,
+        "mtu": 5000,
+        "ipam": {
+          "type": "host-local",
+          "subnet": "10.1.2.0/24",
+          "routes": [
+            { "dst": "0.0.0.0/0" }
+          ]
+        }
+      }
+    }`,
+				Spartan:     true,
+				Minuteman:   true,
+				Path:        minuteman.DefaultPath,
+				ContainerID: "dummy"}),
+		Entry("Explicit values",
+			L4lbCase{
+				Conf: `{
+      "cniVersion": "0.2.0",
+      "name": "spartan-net",
+      "type": "dcos-l4lb",
+      "spartan": true,
+      "minuteman": {
+        "path": "/tmp/minuteman_cni_test"
+      },
+      "delegate" : {
+        "type" : "bridge",
+        "bridge": "mesos-cni0",
+        "ipMasq": true,
+        "mtu": 5000,
+        "ipam": {
+          "type": "host-local",
+          "subnet": "10.1.2.0/24",
+          "routes": [
+            { "dst": "0.0.0.0/0" }
+          ]
+        }
+      }
+    }`,
+				Spartan:     true,
+				Minuteman:   true,
+				Path:        "/tmp/minuteman_cni_test",
+				ContainerID: "dummy"}),
+		Entry("Spartan Disabled",
+			L4lbCase{
+				Conf: `{
+      "cniVersion": "0.2.0",
+      "name": "spartan-net",
+      "type": "dcos-l4lb",
+      "spartan": false,
+      "minuteman": {
+				"enable": true
+      },
+      "delegate" : {
+        "type" : "bridge",
+        "bridge": "mesos-cni0",
+        "ipMasq": true,
+        "mtu": 5000,
+        "ipam": {
+          "type": "host-local",
+          "subnet": "10.1.2.0/24",
+          "routes": [
+            { "dst": "0.0.0.0/0" }
+          ]
+        }
+      }
+    }`,
+				Spartan:     false,
+				Minuteman:   true,
+				Path:        minuteman.DefaultPath,
+				ContainerID: "dummy"}),
+	)
 })
