@@ -9,6 +9,8 @@ import (
 	"github.com/containernetworking/cni/pkg/skel"
 )
 
+const DefaultPath = "/var/run/dcos/cni/l4lb"
+
 func CniAdd(args *skel.CmdArgs) error {
 	conf := &NetConf{}
 	if err := json.Unmarshal(args.StdinData, conf); err != nil {
@@ -16,7 +18,7 @@ func CniAdd(args *skel.CmdArgs) error {
 	}
 
 	if conf.Path == "" {
-		return fmt.Errorf("missing path for minuteman state")
+		conf.Path = DefaultPath
 	}
 
 	// Create the directory where minuteman will search for the
@@ -24,6 +26,8 @@ func CniAdd(args *skel.CmdArgs) error {
 	if err := os.MkdirAll(conf.Path, 0644); err != nil {
 		return fmt.Errorf("couldn't create directory for storing minuteman container registration information:%s", err)
 	}
+
+	fmt.Fprintln(os.Stderr, "Registering netns for containerID", args.ContainerID, " at path: ", conf.Path)
 
 	// Create a file with name `ContainerID` and write the network
 	// namespace into this file.
@@ -43,7 +47,7 @@ func CniDel(args *skel.CmdArgs) error {
 	// For failures just log to `stderr` instead of  failing with an
 	// error.
 	if conf.Path == "" {
-		fmt.Fprintf(os.Stderr, "missing path for minuteman state")
+		conf.Path = DefaultPath
 	}
 
 	// Remove the container registration.

@@ -1,5 +1,6 @@
 package minuteman
 
 type NetConf struct {
-	Path string `json:"path, omitempty"`
+	Enable bool   `json:"enable", omitempty"`
+	Path   string `json:"path, omitempty"`
 }
