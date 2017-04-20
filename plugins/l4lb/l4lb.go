@@ -17,6 +17,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"runtime"
 
 	"github.com/dcos/dcos-cni/pkg/minuteman"
@@ -33,18 +34,31 @@ import (
 // `types.NetConf` and `minuteman.NetConf` in `NetConf`.
 type NetConf struct {
 	types.NetConf
-	Minuteman *minuteman.NetConf     `json:"minuteman, omitempty"`
 	Spartan   bool                   `json:"spartan, omitempty"`
+	Minuteman *minuteman.NetConf     `json:"minuteman, omitempty"`
 	Args      map[string]interface{} `json:"args, omitempty"`
 	MTU       int                    `json:"mtu, omitempty"`
 	Delegate  map[string]interface{} `json:"delegate, omitempty"`
 }
+
+// By default Spartan and Minuteman are specified to be enabled.
 
 func init() {
 	// This ensures that main runs only on main thread (thread group leader).
 	// Since namespace ops (unshare, setns) are done for a single thread, we
 	// must ensure that the goroutine does not jump from OS thread to thread
 	runtime.LockOSThread()
+}
+
+func initConf() *NetConf {
+	conf := &NetConf{
+		Spartan: true,
+		Minuteman: &minuteman.NetConf{
+			Enable: true,
+		},
+	}
+
+	return conf
 }
 
 func setupDelegateConf(conf *NetConf) (delegateConf []byte, delegatePlugin string, err error) {
@@ -73,7 +87,8 @@ func setupDelegateConf(conf *NetConf) (delegateConf []byte, delegatePlugin strin
 }
 
 func cmdAdd(args *skel.CmdArgs) error {
-	conf := &NetConf{}
+	conf := initConf()
+
 	if err := json.Unmarshal(args.StdinData, conf); err != nil {
 		return fmt.Errorf("failed to load netconf: %s", err)
 	}
@@ -96,6 +111,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 		return fmt.Errorf("at least one of minuteman or spartan CNI options need to be enabled for this plutin")
 	}
 
+	fmt.Fprintln(os.Stderr, "Spartan enabled:", conf.Spartan)
 	if conf.Spartan {
 		// Install the spartan network.
 		err = spartan.CniAdd(args)
@@ -110,7 +126,10 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 
 	// Check if minuteman needs to be enabled for this container.
-	if conf.Minuteman != nil {
+	fmt.Fprintln(os.Stderr, "Minuteman enabled:", conf.Minuteman.Enable)
+
+	if conf.Minuteman.Enable {
+		fmt.Fprintln(os.Stderr, "Asking plugin to register container netns for minuteman")
 		minutemanArgs := *args
 		minutemanArgs.StdinData, err = json.Marshal(conf.Minuteman)
 		if err != nil {
@@ -129,7 +148,8 @@ func cmdAdd(args *skel.CmdArgs) error {
 }
 
 func cmdDel(args *skel.CmdArgs) error {
-	conf := &NetConf{}
+	conf := initConf()
+
 	if err := json.Unmarshal(args.StdinData, conf); err != nil {
 		return fmt.Errorf("failed to load netconf: %s", err)
 	}
