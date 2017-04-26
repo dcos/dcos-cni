@@ -15,19 +15,19 @@ ifeq ($(VERBOSE),1)
 endif
 
 #dcos-l4lb
-L4LB=github.com/dcos/dcos-cni/plugins/l4lb
-L4LB_SRC=$(wildcard plugins/l4lb/*.go) $(wildcard pkg/spartan/*.go)
-L4LB_TEST_SRC=$(wildcard plugins/l4lbl/*_tests.go)
+L4LB=github.com/dcos/dcos-cni/cmd/l4lb
+L4LB_SRC=$(wildcard cmd/l4lb/*.go) $(wildcard pkg/spartan/*.go)
+L4LB_TEST_SRC=$(wildcard cmd/l4lbl/*_tests.go)
 
 PLUGINS=dcos-l4lb
 TESTS=dcos-l4lb-test
 
-.PHONY: all plugin
+.PHONY: all plugin clean
+
 default: all
 
-.PHONY: clean
 clean:
-	rm -rf vendor bin gopath
+	rm -rf vendor/ bin/ gopath/
 
 gopath:
 	mkdir -p gopath/src/github.com/dcos
