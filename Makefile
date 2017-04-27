@@ -16,7 +16,10 @@ endif
 
 #dcos-l4lb
 L4LB=github.com/dcos/dcos-cni/cmd/l4lb
-L4LB_SRC=$(wildcard cmd/l4lb/*.go) $(wildcard pkg/spartan/*.go)
+L4LB_SRC=$(wildcard cmd/l4lb/*.go)\
+	$(wildcard pkg/spartan/*.go)\
+	$(wildcard pkg/l4lb/*.go)
+
 L4LB_TEST_SRC=$(wildcard cmd/l4lbl/*_tests.go)
 
 PLUGINS=dcos-l4lb
