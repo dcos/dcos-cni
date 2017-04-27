@@ -11,10 +11,16 @@ import (
 
 const DefaultPath = "/var/run/dcos/cni/l4lb"
 
+type Error string
+
+func (err Error) Error() string {
+	return "minuteman: " + string(err)
+}
+
 func CniAdd(args *skel.CmdArgs) error {
 	conf := &NetConf{}
 	if err := json.Unmarshal(args.StdinData, conf); err != nil {
-		return fmt.Errorf("failed to load minuteman netconf: %s", err)
+		return Error(fmt.Sprintf("failed to load minuteman netconf: %s", err))
 	}
 
 	if conf.Path == "" {
@@ -24,7 +30,7 @@ func CniAdd(args *skel.CmdArgs) error {
 	// Create the directory where minuteman will search for the
 	// registered containers.
 	if err := os.MkdirAll(conf.Path, 0644); err != nil {
-		return fmt.Errorf("couldn't create directory for storing minuteman container registration information:%s", err)
+		return Error(fmt.Sprintf("couldn't create directory for storing minuteman container registration information:%s", err))
 	}
 
 	fmt.Fprintln(os.Stderr, "Registering netns for containerID", args.ContainerID, " at path: ", conf.Path)
@@ -32,7 +38,7 @@ func CniAdd(args *skel.CmdArgs) error {
 	// Create a file with name `ContainerID` and write the network
 	// namespace into this file.
 	if err := ioutil.WriteFile(conf.Path+"/"+args.ContainerID, []byte(args.Netns), 0644); err != nil {
-		return fmt.Errorf("couldn't checkout point the network namespace for containerID:%s for minuteman", args.ContainerID)
+		return Error(fmt.Sprintf("couldn't checkout point the network namespace for containerID:%s for minuteman", args.ContainerID))
 	}
 
 	return nil
@@ -41,7 +47,7 @@ func CniAdd(args *skel.CmdArgs) error {
 func CniDel(args *skel.CmdArgs) error {
 	conf := &NetConf{}
 	if err := json.Unmarshal(args.StdinData, conf); err != nil {
-		return fmt.Errorf("failed to load minuteman netconf: %s", err)
+		return Error(fmt.Sprintf("failed to load minuteman netconf: %s", err))
 	}
 
 	// For failures just log to `stderr` instead of  failing with an

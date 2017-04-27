@@ -114,9 +114,9 @@ func cmdAdd(args *skel.CmdArgs) error {
 	fmt.Fprintln(os.Stderr, "Spartan enabled:", conf.Spartan)
 	if conf.Spartan {
 		// Install the spartan network.
-		err = spartan.CniAdd(args)
+		err := spartan.CniAdd(args)
 		if err != nil {
-			return fmt.Errorf("failed to invoke the spartan plugin: %s", err)
+			return fmt.Errorf("failed: %s", err)
 		}
 
 		//TODO(asridharan): We probably need to update the DNS result to
@@ -138,7 +138,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 
 		err = minuteman.CniAdd(&minutemanArgs)
 		if err != nil {
-			return fmt.Errorf("Unable to register container:%s with minuteman", args.ContainerID)
+			return fmt.Errorf("failed to register container:%s with minuteman: %s", args.ContainerID, err)
 		}
 	}
 
@@ -176,7 +176,7 @@ func cmdDel(args *skel.CmdArgs) error {
 
 		err = minuteman.CniDel(&minutemanArgs)
 		if err != nil {
-			return fmt.Errorf("Unable to register container:%s with minuteman", args.ContainerID)
+			return fmt.Errorf("Unable to register container:%s with minuteman: %s", args.ContainerID, err)
 		}
 	}
 
