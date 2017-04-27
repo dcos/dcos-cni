@@ -2,7 +2,6 @@ package spartan
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -15,6 +14,12 @@ import (
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/types/current"
 )
+
+type Error string
+
+func (err Error) Error() string {
+	return "spartan: " + string(err)
+}
 
 func setupContainerVeth(netns, ifName string, mtu int, pr current.Result, spartanIPs []net.IPNet) (string, error) {
 	// The IPAM result will be something like IP=192.168.3.5/24,
@@ -80,40 +85,40 @@ func CniAdd(args *skel.CmdArgs) error {
 	// network.
 	spartanNetConf, err := json.Marshal(Config)
 	if err != nil {
-		return fmt.Errorf("failed to marshall the `spartan-network` IPAM configuration: %s", err)
+		return Error(fmt.Sprintf("failed to marshall the `spartan-network` IPAM configuration: %s", err))
 	}
 
 	// Run the IPAM plugin for the spartan network.
 	ipamResult, err := ipam.ExecAdd(Config.IPAM.Type, spartanNetConf)
 	if err != nil {
-		return err
+		return Error(fmt.Sprintf("failed to get IP address:%s", err))
 	}
 
 	result, err := current.NewResultFromResult(ipamResult)
 	if err != nil {
-		return err
+		return Error(fmt.Sprintf("unable to parse IPAM result:%s", err))
 	}
 
 	if result.IPs == nil {
-		return errors.New("IPAM plugin returned missing IPv4 config")
+		return Error("IPAM plugin returned missing IPv4 config")
 	}
 
 	// Make sure we got only one IP and that it is IPv4
 	switch {
 	case len(result.IPs) > 1:
-		return errors.New("Expecting a single IPv4 address from IPAM")
+		return Error("Expecting a single IPv4 address from IPAM")
 	case result.IPs[0].Address.IP.To4() == nil:
-		return errors.New("Expecting a IPv4 address from IPAM")
+		return Error("Expecting a IPv4 address from IPAM")
 	}
 
 	hostVethName, err := setupContainerVeth(args.Netns, Config.Interface, 0, *result, IPs)
 	if err != nil {
-		return err
+		return Error(fmt.Sprintf("unable to create veth pair: %s", err))
 	}
 
 	hostVeth, err := netlink.LinkByName(hostVethName)
 	if err != nil {
-		return fmt.Errorf("failed to lookup host VETH %s: %s", hostVethName, err)
+		return Error(fmt.Sprintf("failed to lookup host VETH %s: %s", hostVethName, err))
 	}
 
 	containerRoute := netlink.Route{
@@ -126,7 +131,7 @@ func CniAdd(args *skel.CmdArgs) error {
 	}
 
 	if err = netlink.RouteAdd(&containerRoute); err != nil {
-		return fmt.Errorf("failed to add spartan route %s: %s", containerRoute, err)
+		return Error(fmt.Sprintf("failed to add spartan route %s: %s", containerRoute, err))
 	}
 
 	return nil
@@ -135,11 +140,11 @@ func CniAdd(args *skel.CmdArgs) error {
 func CniDel(args *skel.CmdArgs) error {
 	spartanNetConf, err := json.Marshal(Config)
 	if err != nil {
-		return fmt.Errorf("failed to marshall the `spartan-network` IPAM configuration: %s", err)
+		return Error(fmt.Sprintf("failed to marshall the `spartan-network` IPAM configuration: %s", err))
 	}
 
 	if err = ipam.ExecDel(Config.IPAM.Type, spartanNetConf); err != nil {
-		return err
+		return Error(fmt.Sprintf("IPAM unable to invoke DEL:%s", err))
 	}
 
 	if args.Netns == "" {
