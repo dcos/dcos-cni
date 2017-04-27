@@ -15,6 +15,8 @@ import (
 	"github.com/containernetworking/cni/pkg/types/current"
 )
 
+var ipNetMask_32 net.IPMask = net.IPv4Mask(0xff, 0xff, 0xff, 0xff)
+
 type Error string
 
 func (err Error) Error() string {
@@ -51,7 +53,7 @@ func setupContainerVeth(netns, ifName string, mtu int, pr current.Result, sparta
 		}
 
 		// Set the netmask to a /32.
-		pr.IPs[0].Address.Mask = net.IPv4Mask(0xff, 0xff, 0xff, 0xff)
+		pr.IPs[0].Address.Mask = ipNetMask_32
 
 		addr := &netlink.Addr{IPNet: &pr.IPs[0].Address, Label: ""}
 		if err = netlink.AddrAdd(containerVeth, addr); err != nil {
@@ -125,7 +127,7 @@ func CniAdd(args *skel.CmdArgs) error {
 		LinkIndex: hostVeth.Attrs().Index,
 		Dst: &net.IPNet{
 			IP:   result.IPs[0].Address.IP,
-			Mask: net.IPv4Mask(0xff, 0xff, 0xff, 0xff),
+			Mask: ipNetMask_32,
 		},
 		Scope: netlink.SCOPE_LINK,
 	}
