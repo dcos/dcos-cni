@@ -17,7 +17,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os"
+	"log"
 	"runtime"
 
 	"github.com/dcos/dcos-cni/pkg/l4lb"
@@ -60,8 +60,8 @@ func cmdAdd(args *skel.CmdArgs) error {
 		return fmt.Errorf("failed to invoke delegate plugin %s: %s", delegatePlugin, err)
 	}
 
-	fmt.Fprintln(os.Stderr, "Spartan enabled:", conf.Spartan)
 	if conf.Spartan.Enable {
+		log.Println("Spartan enabled:", conf.Spartan)
 		// Install the spartan network.
 		err := spartan.CniAdd(args)
 		if err != nil {
@@ -75,10 +75,10 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 
 	// Check if minuteman needs to be enabled for this container.
-	fmt.Fprintln(os.Stderr, "Minuteman enabled:", conf.Minuteman.Enable)
+	log.Println("Minuteman enabled:", conf.Minuteman.Enable)
 
 	if conf.Minuteman.Enable {
-		fmt.Fprintln(os.Stderr, "Asking plugin to register container netns for minuteman")
+		log.Println("Asking plugin to register container netns for minuteman")
 		minutemanArgs := *args
 		minutemanArgs.StdinData, err = json.Marshal(conf.Minuteman)
 		if err != nil {

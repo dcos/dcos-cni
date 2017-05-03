@@ -3,8 +3,8 @@ package spartan
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
-	"os"
 
 	"github.com/vishvananda/netlink"
 
@@ -170,7 +170,7 @@ func CniDel(args *skel.CmdArgs) error {
 	})
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to delete spartan interface in container: %s", err)
+		log.Printf("failed to delete spartan interface in container: %s", err)
 	}
 
 	return nil
