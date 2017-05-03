@@ -7,11 +7,12 @@ import (
 	"github.com/containernetworking/cni/pkg/types"
 
 	"github.com/dcos/dcos-cni/pkg/minuteman"
+	"github.com/dcos/dcos-cni/pkg/spartan"
 )
 
 type NetConf struct {
 	types.NetConf
-	Spartan   bool                   `json:"spartan, omitempty"`
+	Spartan   *spartan.NetConf       `json:"spartan, omitempty"`
 	Minuteman *minuteman.NetConf     `json:"minuteman, omitempty"`
 	Args      map[string]interface{} `json:"args, omitempty"`
 	MTU       int                    `json:"mtu, omitempty"`
@@ -20,7 +21,10 @@ type NetConf struct {
 
 func NewNetConf() *NetConf {
 	conf := &NetConf{
-		Spartan: true,
+		Spartan: &spartan.NetConf{
+			Enable: true,
+		},
+
 		Minuteman: &minuteman.NetConf{
 			Enable: true,
 		},

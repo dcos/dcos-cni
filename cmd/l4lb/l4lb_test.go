@@ -163,23 +163,23 @@ var _ = Describe("L4lb", func() {
 		Entry("Default values",
 			L4lbCase{
 				Conf: `{
-      "cniVersion": "0.2.0",
-      "name": "spartan-net",
-      "type": "dcos-l4lb",
-      "delegate" : {
-        "type" : "bridge",
-        "bridge": "mesos-cni0",
-        "ipMasq": true,
-        "mtu": 5000,
-        "ipam": {
-          "type": "host-local",
-          "subnet": "10.1.2.0/24",
-          "routes": [
-            { "dst": "0.0.0.0/0" }
-          ]
-        }
-      }
-    }`,
+					"cniVersion": "0.2.0",
+					"name": "spartan-net",
+					"type": "dcos-l4lb",
+					"delegate" : {
+						"type" : "bridge",
+						"bridge": "mesos-cni0",
+						"ipMasq": true,
+						"mtu": 5000,
+						"ipam": {
+							"type": "host-local",
+							"subnet": "10.1.2.0/24",
+							"routes": [
+							{ "dst": "0.0.0.0/0" }
+							]
+						}
+					}
+				}`,
 				Spartan:     true,
 				Minuteman:   true,
 				Path:        minuteman.DefaultPath,
@@ -187,27 +187,29 @@ var _ = Describe("L4lb", func() {
 		Entry("Explicit values",
 			L4lbCase{
 				Conf: `{
-      "cniVersion": "0.2.0",
-      "name": "spartan-net",
-      "type": "dcos-l4lb",
-      "spartan": true,
-      "minuteman": {
-        "path": "/tmp/minuteman_cni_test"
-      },
-      "delegate" : {
-        "type" : "bridge",
-        "bridge": "mesos-cni0",
-        "ipMasq": true,
-        "mtu": 5000,
-        "ipam": {
-          "type": "host-local",
-          "subnet": "10.1.2.0/24",
-          "routes": [
-            { "dst": "0.0.0.0/0" }
-          ]
-        }
-      }
-    }`,
+					"cniVersion": "0.2.0",
+					"name": "spartan-net",
+					"type": "dcos-l4lb",
+					"spartan": {
+						"enable": true
+					},
+					"minuteman": {
+						"path": "/tmp/minuteman_cni_test"
+					},
+					"delegate" : {
+						"type" : "bridge",
+						"bridge": "mesos-cni0",
+						"ipMasq": true,
+						"mtu": 5000,
+						"ipam": {
+							"type": "host-local",
+							"subnet": "10.1.2.0/24",
+							"routes": [
+							{ "dst": "0.0.0.0/0" }
+							]
+						}
+					}
+				}`,
 				Spartan:     true,
 				Minuteman:   true,
 				Path:        "/tmp/minuteman_cni_test",
@@ -215,27 +217,29 @@ var _ = Describe("L4lb", func() {
 		Entry("Spartan Disabled",
 			L4lbCase{
 				Conf: `{
-      "cniVersion": "0.2.0",
-      "name": "spartan-net",
-      "type": "dcos-l4lb",
-      "spartan": false,
-      "minuteman": {
-				"enable": true
-      },
-      "delegate" : {
-        "type" : "bridge",
-        "bridge": "mesos-cni0",
-        "ipMasq": true,
-        "mtu": 5000,
-        "ipam": {
-          "type": "host-local",
-          "subnet": "10.1.2.0/24",
-          "routes": [
-            { "dst": "0.0.0.0/0" }
-          ]
-        }
-      }
-    }`,
+					"cniVersion": "0.2.0",
+					"name": "spartan-net",
+					"type": "dcos-l4lb",
+					"spartan": {
+						"enable": false
+					},
+					"minuteman": {
+						"enable": true
+					},
+					"delegate" : {
+						"type" : "bridge",
+						"bridge": "mesos-cni0",
+						"ipMasq": true,
+						"mtu": 5000,
+						"ipam": {
+							"type": "host-local",
+							"subnet": "10.1.2.0/24",
+							"routes": [
+							{ "dst": "0.0.0.0/0" }
+							]
+						}
+					}
+				}`,
 				Spartan:     false,
 				Minuteman:   true,
 				Path:        minuteman.DefaultPath,

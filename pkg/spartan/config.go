@@ -6,6 +6,10 @@ import (
 	"github.com/containernetworking/cni/pkg/types"
 )
 
+type NetConf struct {
+	Enable bool `json:"enable", omitempty"`
+}
+
 type IPAM struct {
 	Type       string      `json:"type"`
 	RangeStart net.IP      `json:"rangeStart"`
