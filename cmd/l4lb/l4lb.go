@@ -60,12 +60,8 @@ func cmdAdd(args *skel.CmdArgs) error {
 		return fmt.Errorf("failed to invoke delegate plugin %s: %s", delegatePlugin, err)
 	}
 
-	if !conf.Spartan && conf.Minuteman == nil {
-		return fmt.Errorf("at least one of minuteman or spartan CNI options need to be enabled for this plutin")
-	}
-
 	fmt.Fprintln(os.Stderr, "Spartan enabled:", conf.Spartan)
-	if conf.Spartan {
+	if conf.Spartan.Enable {
 		// Install the spartan network.
 		err := spartan.CniAdd(args)
 		if err != nil {
@@ -107,18 +103,14 @@ func cmdDel(args *skel.CmdArgs) error {
 		return fmt.Errorf("failed to load netconf: %s", err)
 	}
 
-	if !conf.Spartan && conf.Minuteman == nil {
-		return fmt.Errorf("one of minuteman or spartan need to be enabled for this plugin")
-	}
-
-	if conf.Spartan {
+	if conf.Spartan.Enable {
 		err := spartan.CniDel(args)
 		if err != nil {
 			return fmt.Errorf("failed to invoke the spartan plugin with CNI_DEL")
 		}
 	}
 
-	if conf.Minuteman != nil {
+	if conf.Minuteman.Enable {
 		var err error
 		minutemanArgs := *args
 		// Check if minuteman entries need to be removed from this container.
