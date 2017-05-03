@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 
 	"github.com/containernetworking/cni/pkg/skel"
@@ -58,7 +59,7 @@ func CniDel(args *skel.CmdArgs) error {
 
 	// Remove the container registration.
 	if err := os.Remove(conf.Path + "/" + args.ContainerID); err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to remove registration for contianerID:%s from minuteman", args.ContainerID)
+		log.Printf("Unable to remove registration for contianerID:%s from minuteman", args.ContainerID)
 	}
 
 	return nil
