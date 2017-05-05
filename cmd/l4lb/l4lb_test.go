@@ -29,7 +29,7 @@ var _ = Describe("L4lb", func() {
 	}
 
 	var originalNS ns.NetNS
-	const spartanIfName = "spartan"
+	const spartanHostIfName = spartan.IfName
 
 	BeforeEach(func() {
 		// Create a new NetNS so we don't modify the host
@@ -40,7 +40,7 @@ var _ = Describe("L4lb", func() {
 		// Create dummy spartan interface in this namespace.
 		dummy := &netlink.Dummy{
 			LinkAttrs: netlink.LinkAttrs{
-				Name:  spartanIfName,
+				Name:  spartanHostIfName,
 				Flags: net.FlagUp,
 				MTU:   1500,
 			},
@@ -68,7 +68,7 @@ var _ = Describe("L4lb", func() {
 		// Remove the spartan dummy interface.
 		Expect(originalNS.Close()).To(Succeed())
 
-		_, err := ip.DelLinkByNameAddr(spartanIfName, netlink.FAMILY_V4)
+		_, err := ip.DelLinkByNameAddr(spartanHostIfName, netlink.FAMILY_V4)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -99,7 +99,7 @@ var _ = Describe("L4lb", func() {
 				_, _, err := testutils.CmdAddWithResult(targetNS.Path(), IFNAME, []byte(conf), func() error {
 					return cmdAdd(args)
 				})
-				Expect(err).NotTo(HaveOccurred())
+				Expect(err).NotTo(HaveOccurred(), "Couldn't invoke CNI ADD on the plugin")
 				return nil
 			})
 			Expect(err).NotTo(HaveOccurred())
@@ -111,16 +111,16 @@ var _ = Describe("L4lb", func() {
 				// Check if the spartan link has been added.
 				link, err := netlink.LinkByName(spartan.IfName)
 				if input.Spartan {
-					Expect(err).NotTo(HaveOccurred())
-					Expect(link.Attrs().Name).To(Equal(spartan.IfName))
+					Expect(err).NotTo(HaveOccurred(), "spartan interface not found")
+					Expect(link.Attrs().Name).To(Equal(spartan.IfName), "spartan interface name not correct")
 				} else {
-					Expect(err).To(HaveOccurred())
+					Expect(err).To(HaveOccurred(), "spartan interface `%s` should not be present", spartan.IfName)
 				}
 
 				// Check if the minuteman link has been added.
 				link, err = netlink.LinkByName(minuteman.IfName)
 				if input.Minuteman {
-					Expect(err).NotTo(HaveOccurred())
+					Expect(err).NotTo(HaveOccurred(), "minuteman interface %s not found", minuteman.IfName)
 					Expect(link.Attrs().Name).To(Equal(minuteman.IfName))
 				} else {
 					Expect(err).To(HaveOccurred())
@@ -159,11 +159,11 @@ var _ = Describe("L4lb", func() {
 				defer GinkgoRecover()
 
 				link, err := netlink.LinkByName(spartan.IfName)
-				Expect(err).To(HaveOccurred())
+				Expect(err).To(HaveOccurred(), "spartan interface `%s` still present after DEL", spartan.IfName)
 				Expect(link).To(BeNil())
 
 				link, err = netlink.LinkByName(minuteman.IfName)
-				Expect(err).To(HaveOccurred())
+				Expect(err).To(HaveOccurred(), "minuteman interface `%s` still present after DEL", minuteman.IfName)
 				Expect(link).To(BeNil())
 				return nil
 			})
