@@ -104,7 +104,7 @@ var _ = Describe("L4lb", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			By("Checking if container has the spartan interfaces configured")
+			By("Checking if container has the spartan and minuteman interfaces configured")
 			err = targetNS.Do(func(ns.NetNS) error {
 				defer GinkgoRecover()
 
@@ -117,7 +117,16 @@ var _ = Describe("L4lb", func() {
 					Expect(err).To(HaveOccurred())
 				}
 
-				// Run the ping command for each of the spartan IP.
+				// Check if the minuteman link has been added.
+				link, err = netlink.LinkByName(minuteman.IfName)
+				if input.Minuteman {
+					Expect(err).NotTo(HaveOccurred())
+					Expect(link.Attrs().Name).To(Equal(minuteman.IfName))
+				} else {
+					Expect(err).To(HaveOccurred())
+				}
+
+				// TODO(asridharan): Run the ping command for each of the spartan IP.
 				return nil
 			})
 
@@ -144,12 +153,16 @@ var _ = Describe("L4lb", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			// Make sure spartan link has been deleted
+			// Make sure spartan and minuteman links have been deleted
 			By("Checking that the spartan interface has been removed from the container netns")
 			err = targetNS.Do(func(ns.NetNS) error {
 				defer GinkgoRecover()
 
 				link, err := netlink.LinkByName(spartan.IfName)
+				Expect(err).To(HaveOccurred())
+				Expect(link).To(BeNil())
+
+				link, err = netlink.LinkByName(minuteman.IfName)
 				Expect(err).To(HaveOccurred())
 				Expect(link).To(BeNil())
 				return nil

@@ -6,13 +6,13 @@ import (
 	"log"
 	"net"
 
-	"github.com/vishvananda/netlink"
-
 	"github.com/containernetworking/cni/pkg/ip"
 	"github.com/containernetworking/cni/pkg/ipam"
 	"github.com/containernetworking/cni/pkg/ns"
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/types/current"
+
+	"github.com/vishvananda/netlink"
 )
 
 var ipNetMask_32 net.IPMask = net.IPv4Mask(0xff, 0xff, 0xff, 0xff)
