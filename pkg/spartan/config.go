@@ -23,7 +23,7 @@ type Network struct {
 	IPAM      IPAM   `json:"ipam"`
 }
 
-const IfName string = "spartan0"
+const IfName string = "spartan"
 
 // TODO(asridharan): This needs to be derived from the spartan
 // configuration.
@@ -46,7 +46,7 @@ var IPs = []net.IPNet{
 // configuration.
 var Config = Network{
 	Name:      "spartan-network",
-	Interface: "spartan0",
+	Interface: IfName,
 	IPAM: IPAM{
 		Type:       "host-local",
 		RangeStart: net.IPv4(198, 51, 100, 10),
