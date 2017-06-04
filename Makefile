@@ -14,11 +14,18 @@ ifeq ($(VERBOSE),1)
 	TEST_VERBOSE=-ginkgo.v
 endif
 
+PKGS=mesos \
+     l4lb\
+     minuteman\
+     spartan\
+
 #dcos-l4lb
 L4LB=github.com/dcos/dcos-cni/cmd/l4lb
 L4LB_SRC=$(wildcard cmd/l4lb/*.go)\
-	$(wildcard pkg/spartan/*.go)\
-	$(wildcard pkg/l4lb/*.go)
+	 $(wildcard pkg/l4lb/*.go)\
+	 $(wildcard pkg/spartan/*.go)\
+	 $(wildcard pkg/l4lb/*.go)
+
 
 L4LB_TEST_SRC=$(wildcard cmd/l4lbl/*_tests.go)
 
@@ -48,7 +55,10 @@ dcos-l4lb:$(L4LB_SRC)
 	mkdir -p `pwd`/bin
 	go build -v -o `pwd`/bin/$@ $(L4LB)
 
-plugin: gopath vendor $(PLUGINS)
+$(PKGS): %: $(wildcard pkg/%/*.go)
+	go build -v github.com/dcos/dcos-cni/pkg/$@
+
+plugin: gopath vendor $(PKGS) $(PLUGINS)
 
 dcos-l4lb-test:$(L4LB_TEST_SRC)
 	echo "GOPATH:" $(GOPATH)
