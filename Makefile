@@ -26,11 +26,15 @@ L4LB_SRC=$(wildcard cmd/l4lb/*.go)\
 	 $(wildcard pkg/spartan/*.go)\
 	 $(wildcard pkg/l4lb/*.go)
 
-
 L4LB_TEST_SRC=$(wildcard cmd/l4lbl/*_tests.go)
 
+MESOS=github.com/dcos/dcos-cni/pkg/mesos
+MESOS_SRC= $(wildcard pkg/mesos/*.go)
+MESOS_TEST_SRC=$(wildcard pkg/mesos/*_tests.go)
+
 PLUGINS=dcos-l4lb
-TESTS=dcos-l4lb-test
+TESTS=dcos-l4lb-test \
+      mesos-test
 
 .PHONY: all plugin clean
 
@@ -63,6 +67,10 @@ plugin: gopath vendor $(PKGS) $(PLUGINS)
 dcos-l4lb-test:$(L4LB_TEST_SRC)
 	echo "GOPATH:" $(GOPATH)
 	go test $(L4LB) -test.v $(TEST_VERBOSE)
+
+mesos-test:$(MESOS_TEST_SRC) $(MESOS_SRC)
+	echo "GOPATH:" $(GOPATH)
+	go test $(MESOS) -test.v $(TEST_VERBOSE)
 
 tests: $(TESTS)
 
