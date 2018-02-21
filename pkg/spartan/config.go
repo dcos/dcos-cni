@@ -40,6 +40,10 @@ var IPs = []net.IPNet{
 		IP:   net.IPv4(198, 51, 100, 3),
 		Mask: net.IPv4Mask(0xff, 0xff, 0xff, 0xff),
 	},
+	net.IPNet{
+		IP:   net.IPv4(198, 51, 100, 4), //used by k8s DNS proxy
+		Mask: net.IPv4Mask(0xff, 0xff, 0xff, 0xff),
+	},
 }
 
 // TODO(asridharan): This needs to be derived from the spartan
